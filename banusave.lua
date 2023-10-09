@@ -186,21 +186,26 @@ end
 
 ---Encodes a value into the BanUSave format.
 ---@param value boolean|string|number|table|nil The value to encode.
+---@param game string A game ID.
 ---@return love.ByteData data The encoded BanUSave format.
-local function encode(value)
-    local body = encodeValue(value)
-    return merge(love.data.newByteData("BANUSAVE"), body, love.data.newByteData(love.data.hash("sha256", body)))
+local function encode(value, game)
+    assert(type(game) == "string", "Invalid game")
+    local body = merge(love.data.newByteData(game), 0x00, encodeValue(value))
+    return merge(love.data.newByteData("BANUSAVE2"), body, love.data.newByteData(love.data.hash("sha256", body)))
 end
 
 ---Decodes the BanUSave format into a value.
 ---@param data love.Data The BanUSave format to decode.
 ---@return boolean|string|number|table|nil value The decoded value.
+---@return string game The game ID.
 local function decode(data)
-    if data:getSize() < 41 then error("Invalid buffer length") end
-    if slice(data, 0, 7):getString() ~= "BANUSAVE" then error("Invalid buffer header") end
-    local body = slice(data, 8, data:getSize() - 33)
-    if love.data.hash("sha256", body) ~= slice(data, data:getSize() - 32):getString() then error("Invalid buffer checksum") end
-    return ({decodeValue(body)})[1]
+    if data:getSize() < 43 then error("Invalid buffer length") end
+    if slice(data, 0, 8):getString() ~= "BANUSAVE2" then error("Invalid buffer header") end
+    if love.data.hash("sha256", slice(data, 9, data:getSize() - 33)) ~= slice(data, data:getSize() - 32):getString() then error("Invalid buffer checksum") end
+    local gameLength = 0
+    local bytes = ffi.cast("uint8_t*", data:getFFIPointer())
+    while bytes[gameLength + 9] ~= 0x00 do gameLength = gameLength + 1 end
+    return ({decodeValue(slice(data, 10 + gameLength, data:getSize() - 33))})[1], slice(data, 9, 8 + gameLength):getString()
 end
 
 return {encode = encode, decode = decode}
